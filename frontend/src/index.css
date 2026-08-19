@@ -1,0 +1,104 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Eco-friendly theme — CSS variables mirroring tailwind.config.js,
+     for use in plain CSS or inline styles outside of Tailwind classes. */
+  --color-forest: #1b4332;
+  --color-forest-light: #2d6a4f;
+  --color-forest-dark: #0f2e20;
+  --color-gold: #e9c46a;
+  --color-gold-light: #f4e1a1;
+  --color-gold-dark: #d4a93c;
+  --color-cream: #fafaf7;
+  --color-white: #ffffff;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background-color: var(--color-cream);
+  color: var(--color-forest-dark);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth, subtle transitions on anything interactive — the small detail
+   that separates a hand-tuned UI from an unstyled one. Scoped to
+   interactive elements rather than `*` so large lists stay cheap to paint. */
+@layer base {
+  a,
+  button,
+  input,
+  select,
+  textarea {
+    transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* Reusable theme primitives, built on top of Tailwind utilities so pages
+   don't repeat the same long class strings for cards/buttons/badges. */
+@layer components {
+  .card {
+    @apply rounded-2xl border border-gray-100 bg-white p-5 shadow-sm;
+  }
+
+  .card-interactive {
+    @apply cursor-pointer rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-forest-light hover:shadow-md active:scale-[0.98];
+  }
+
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-medium text-forest-dark shadow-sm transition-all hover:bg-gold-dark hover:text-white hover:shadow-md active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-forest-dark;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm text-forest-dark placeholder:text-gray-400 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30;
+  }
+}
+
+/* Modal enter animations. */
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
