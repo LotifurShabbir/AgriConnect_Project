@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+{% block title %}{{ title }} - AgriConnect{% endblock %}
+
+{% block content %}
+
+<a href="{{ url_for('dashboard') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-forest-dark/60 hover:text-forest transition-colors mb-6">
+  ← Back to Dashboard
+</a>
+
+<h1 class="text-2xl font-semibold text-forest-dark mb-6">{{ title }}</h1>
+
+{% if section_type == 'flat' %}
+
+  {% if not rows %}
+    <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
+      No data yet.
+    </div>
+  {% else %}
+    <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-forest-dark/5 text-xs uppercase tracking-wide text-forest-dark/60">
+            <tr>
+              {% for col in columns %}
+                <th class="px-5 py-3 whitespace-nowrap">{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for row in rows %}
+              <tr class="{{ 'bg-white/40' if loop.index % 2 == 0 else '' }} hover:bg-forest/5 transition-colors">
+                {% for value in row %}
+                  <td class="px-5 py-3 text-gray-600 whitespace-nowrap">
+                    {% if row.keys()[loop.index0] == 'Status' and value %}
+                      {{ macros.status_badge(value) }}
+                    {% else %}
+                      {{ value if value is not none else "—" }}
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+{% elif section_type == 'shops' %}
+
+  {% if not groups %}
+    <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
+      No shops yet.
+    </div>
+  {% else %}
+    <div class="space-y-6">
+      {% for g in groups %}
+        <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 hover:shadow-2xl transition-all duration-300 rounded-3xl p-6">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-2xl bg-forest/10 text-forest flex items-center justify-center text-xl">🏬</div>
+              <div>
+                <p class="font-semibold text-forest-dark">{{ g.shop.ShopName }}</p>
+                <p class="text-xs text-gray-500">Run by {{ g.shop.FarmerName or "nobody yet" }}</p>
+              </div>
+            </div>
+            <p class="text-sm text-gold-dark">⭐ {{ "%.1f"|format(g.shop.Review) }}</p>
+          </div>
+
+          {% if not g.item_rows %}
+            <p class="text-sm text-gray-400 pl-1">No items listed.</p>
+          {% else %}
+            <div class="overflow-x-auto rounded-2xl border border-gray-100">
+              <table class="w-full text-left text-sm">
+                <thead class="bg-forest-dark/5 text-xs uppercase tracking-wide text-forest-dark/60">
+                  <tr>
+                    <th class="px-4 py-2.5">Item</th>
+                    <th class="px-4 py-2.5">Price</th>
+                    <th class="px-4 py-2.5">Stock</th>
+                    <th class="px-4 py-2.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  {% for item in g.item_rows %}
+                    <tr class="{{ 'bg-white/40' if loop.index % 2 == 0 else '' }} hover:bg-forest/5 transition-colors">
+                      <td class="px-4 py-2.5 text-gray-700 font-medium">{{ item.Name }}</td>
+                      <td class="px-4 py-2.5 text-gray-600">${{ "%.2f"|format(item.Price) }}</td>
+                      <td class="px-4 py-2.5 text-gray-600">{{ item.Stock }}</td>
+                      <td class="px-4 py-2.5">
+                        {% if item.OrderID %}{{ macros.status_badge("Sold") }}{% else %}{{ macros.status_badge("Available") }}{% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+{% elif section_type == 'customers' %}
+
+  {% if not groups %}
+    <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
+      No customers yet.
+    </div>
+  {% else %}
+    <div class="space-y-6">
+      {% for g in groups %}
+        <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 hover:shadow-2xl transition-all duration-300 rounded-3xl p-6">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-2xl bg-gold/20 text-gold-dark flex items-center justify-center text-xl">🛒</div>
+              <div>
+                <p class="font-semibold text-forest-dark">{{ g.customer.Name }}</p>
+                <p class="text-xs text-gray-500">{{ g.customer.Email }} &middot; {{ g.customer.Phone or "no phone" }}</p>
+              </div>
+            </div>
+            <p class="text-xs text-gray-400">{{ g.orders|length }} order{{ "s" if g.orders|length != 1 else "" }}</p>
+          </div>
+
+          {% if not g.orders %}
+            <p class="text-sm text-gray-400 pl-1">No orders placed yet.</p>
+          {% else %}
+            <div class="overflow-x-auto rounded-2xl border border-gray-100">
+              <table class="w-full text-left text-sm">
+                <thead class="bg-forest-dark/5 text-xs uppercase tracking-wide text-forest-dark/60">
+                  <tr>
+                    <th class="px-4 py-2.5">Order ID</th>
+                    <th class="px-4 py-2.5">Date</th>
+                    <th class="px-4 py-2.5">Total</th>
+                    <th class="px-4 py-2.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  {% for order in g.orders %}
+                    <tr class="{{ 'bg-white/40' if loop.index % 2 == 0 else '' }} hover:bg-forest/5 transition-colors">
+                      <td class="px-4 py-2.5 text-gray-700 font-medium">#{{ order.OrderID }}</td>
+                      <td class="px-4 py-2.5 text-gray-500">{{ order.OrderDate[:16]|replace('T', ' ') if order.OrderDate else "—" }}</td>
+                      <td class="px-4 py-2.5 text-gray-600">${{ "%.2f"|format(order.TotalAmount) }}</td>
+                      <td class="px-4 py-2.5">{{ macros.status_badge(order.Status) }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+{% elif section_type == 'deliverymen' %}
+
+  {% if not groups %}
+    <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
+      No delivery people yet.
+    </div>
+  {% else %}
+    <div class="space-y-6">
+      {% for g in groups %}
+        {% set current = g.deliveries|selectattr("Status", "equalto", "In Transit")|list %}
+        {% set completed = g.deliveries|selectattr("Status", "equalto", "Completed")|list %}
+        <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 hover:shadow-2xl transition-all duration-300 rounded-3xl p-6">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-2xl bg-forest/10 text-forest flex items-center justify-center text-xl">🚚</div>
+              <div>
+                <p class="font-semibold text-forest-dark">{{ g.deliveryman.Name }}</p>
+                <p class="text-xs text-gray-500">{{ g.deliveryman.Email }} &middot; {{ g.deliveryman.VehicleNo or "no vehicle on file" }}</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-sm text-gold-dark">⭐ {{ "%.1f"|format(g.deliveryman.Review) }}</p>
+              <p class="text-xs text-gray-400">{{ g.deliveryman.TotalDeliveries }} total deliveries</p>
+            </div>
+          </div>
+
+          {% if not g.deliveries %}
+            <p class="text-sm text-gray-400 pl-1">No delivery activity yet.</p>
+          {% else %}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-blue-600 mb-2">In Transit ({{ current|length }})</p>
+                {% if not current %}
+                  <p class="text-sm text-gray-400">Nothing in progress.</p>
+                {% else %}
+                  <div class="space-y-2">
+                    {% for d in current %}
+                      <div class="rounded-xl border border-gray-100 px-4 py-2.5 flex items-center justify-between">
+                        <div>
+                          <p class="text-sm font-medium text-gray-700">#{{ d.OrderID }} &middot; {{ d.ShopName or "—" }}</p>
+                          <p class="text-xs text-gray-400">{{ d.CustomerName or "—" }} &middot; ${{ "%.2f"|format(d.TotalAmount) }}</p>
+                        </div>
+                        {{ macros.status_badge(d.Status) }}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-600 mb-2">Completed ({{ completed|length }})</p>
+                {% if not completed %}
+                  <p class="text-sm text-gray-400">Nothing completed yet.</p>
+                {% else %}
+                  <div class="space-y-2">
+                    {% for d in completed %}
+                      <div class="rounded-xl border border-gray-100 px-4 py-2.5 flex items-center justify-between">
+                        <div>
+                          <p class="text-sm font-medium text-gray-700">#{{ d.OrderID }} &middot; {{ d.ShopName or "—" }}</p>
+                          <p class="text-xs text-gray-400">{{ d.CustomerName or "—" }} &middot; ${{ "%.2f"|format(d.TotalAmount) }}</p>
+                        </div>
+                        {{ macros.status_badge(d.Status) }}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+{% elif section_type == 'preorders' %}
+
+  {% if not rows %}
+    <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
+      No pre-order requests yet.
+    </div>
+  {% else %}
+    <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-forest-dark/5 text-xs uppercase tracking-wide text-forest-dark/60">
+            <tr>
+              <th class="px-5 py-3">Item</th>
+              <th class="px-5 py-3">Shop</th>
+              <th class="px-5 py-3">Customer</th>
+              <th class="px-5 py-3">Price</th>
+              <th class="px-5 py-3">Qty</th>
+              <th class="px-5 py-3">Requested</th>
+              <th class="px-5 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for row in rows %}
+              <tr class="{{ 'bg-white/40' if loop.index % 2 == 0 else '' }} hover:bg-forest/5 transition-colors">
+                <td class="px-5 py-3 text-gray-700 font-medium">
+                  {{ row.ItemName or row.CustomItemName }}
+                  {% if not row.ItemName %}<span class="text-xs text-gold-dark">(custom)</span>{% endif %}
+                </td>
+                <td class="px-5 py-3 text-gray-600">{{ row.ShopName or "—" }}</td>
+                <td class="px-5 py-3 text-gray-600">{{ row.CustomerName or "—" }}</td>
+                <td class="px-5 py-3 text-gray-600">${{ "%.2f"|format(row.ProposedPrice) }}</td>
+                <td class="px-5 py-3 text-gray-600">{{ row.Quantity }}</td>
+                <td class="px-5 py-3 text-gray-500">{{ row.RequestDate[:16]|replace('T', ' ') if row.RequestDate else "—" }}</td>
+                <td class="px-5 py-3">{{ macros.status_badge(row.Status) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+{% endif %}
+
+{% endblock %}

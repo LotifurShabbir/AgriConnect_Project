@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}AgriConnect{% endblock %}</title>
+
+  <!-- tailwind via cdn, no build step needed -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            forest: { DEFAULT: '#1B4332', light: '#2D6A4F', dark: '#0F2E20' },
+            gold: { DEFAULT: '#E9C46A', light: '#F4E1A1', dark: '#D4A93C' },
+            cream: '#FAFAF7',
+          },
+        },
+      },
+    };
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col text-forest-dark bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100">
+
+  <!-- glass navbar, stays put and stays see-through as you scroll -->
+  <nav class="sticky top-0 z-30 bg-white/70 backdrop-blur-md border-b border-white/60 shadow-sm">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="{{ url_for('home') }}" class="flex items-center gap-2 text-xl font-bold">
+        <span class="text-2xl">🌿</span>
+        <span class="bg-gradient-to-r from-forest to-forest-light bg-clip-text text-transparent">AgriConnect</span>
+      </a>
+
+      <div class="flex items-center gap-4 text-sm font-medium">
+        {% if 'user_id' in session %}
+          <a href="{{ url_for('dashboard') }}" class="text-forest-dark/70 hover:text-forest transition-colors">Dashboard</a>
+          <span class="hidden sm:inline text-forest-dark/20">|</span>
+          <span class="hidden sm:inline text-forest-dark/70">
+            {{ session.get('name') }}
+            <span class="text-gold-dark font-semibold">({{ session.get('role') }})</span>
+          </span>
+          <a href="{{ url_for('logout') }}"
+             class="rounded-full bg-forest text-white px-4 py-2 shadow-md hover:bg-forest-light hover:shadow-lg hover:ring-2 hover:ring-forest-light/40 hover:-translate-y-0.5 transition-all duration-300">
+            Logout
+          </a>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="text-forest-dark/70 hover:text-forest transition-colors">Login</a>
+          <a href="{{ url_for('register') }}"
+             class="rounded-full bg-gold text-forest-dark font-semibold px-4 py-2 shadow-md hover:bg-gold-dark hover:text-white hover:shadow-lg hover:ring-2 hover:ring-gold/40 hover:-translate-y-0.5 transition-all duration-300">
+            Register
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 w-full max-w-6xl mx-auto px-6 py-8">
+    <!-- flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-2">
+          {% for category, message in messages %}
+            <div class="rounded-2xl px-4 py-3 text-sm font-medium shadow-md backdrop-blur-md border
+              {% if category == 'error' %}bg-rose-50/90 text-rose-700 border-rose-200
+              {% else %}bg-emerald-50/90 text-emerald-700 border-emerald-200{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="text-center text-xs text-forest-dark/40 py-6">
+    AgriConnect &middot; Eco-friendly commerce
+  </footer>
+</body>
+</html>

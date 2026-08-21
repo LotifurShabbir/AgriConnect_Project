@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Login - AgriConnect{% endblock %}
+
+{% block content %}
+<div class="relative max-w-md mx-auto py-6">
+  <!-- soft blurred blobs behind the card, purely decorative -->
+  <div class="absolute -top-8 -left-8 w-40 h-40 bg-gold/20 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute -bottom-8 -right-8 w-40 h-40 bg-forest/15 rounded-full blur-3xl pointer-events-none"></div>
+
+  <div class="relative">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-forest text-gold text-2xl mb-3 shadow-md">🌿</div>
+      <h1 class="text-2xl font-semibold text-forest-dark">AgriConnect</h1>
+      <p class="text-sm text-gray-500 mt-1">Sign in to your account</p>
+    </div>
+
+    <form method="POST" action="{{ url_for('login') }}"
+          class="bg-white rounded-2xl border border-gray-100 shadow-xl p-6 space-y-4">
+
+      <div>
+        <label class="block text-sm font-medium text-forest-dark mb-1" for="email">Email</label>
+        <input id="email" name="email" type="email" required
+               class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-forest-dark mb-1" for="password">Password</label>
+        <input id="password" name="password" type="password" required
+               class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30" />
+      </div>
+
+      <button type="submit"
+              class="w-full rounded-xl bg-forest text-white font-medium py-2.5 shadow-sm hover:bg-forest-light hover:shadow-lg hover:-translate-y-0.5 transition-all">
+        Sign In
+      </button>
+
+      <p class="text-center text-sm text-gray-500">
+        Don't have an account?
+        <a href="{{ url_for('register') }}" class="font-medium text-forest hover:text-forest-light">Register</a>
+      </p>
+    </form>
+  </div>
+</div>
+{% endblock %}
