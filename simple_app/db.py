@@ -84,6 +84,8 @@ def init_db():
     """)
 
     # same deal here, "Fruits & Vegetables" -> FruitsAndVegetables
+    # CategoryName only gets used when the farmer picks "Custom" and none of
+    # the three booleans below apply
     cur.execute("""
         CREATE TABLE IF NOT EXISTS Items (
             ItemID INTEGER PRIMARY KEY,
@@ -93,12 +95,24 @@ def init_db():
             FruitsAndVegetables BOOLEAN DEFAULT 0,
             Grains BOOLEAN DEFAULT 0,
             Meat BOOLEAN DEFAULT 0,
+            Unit TEXT DEFAULT 'pieces',
+            CategoryName TEXT,
             ShopID INTEGER,
             OrderID INTEGER,
             FOREIGN KEY (ShopID) REFERENCES Shop (ShopID),
             FOREIGN KEY (OrderID) REFERENCES "Order" (OrderID)
         )
     """)
+
+    # Items existed before Unit/CategoryName did - add them onto whatever db
+    # is already on disk instead of wiping real data right before a demo.
+    # SQLite backfills the DEFAULT into existing rows automatically.
+    for column_sql in ("ALTER TABLE Items ADD COLUMN Unit TEXT DEFAULT 'pieces'",
+                        "ALTER TABLE Items ADD COLUMN CategoryName TEXT"):
+        try:
+            cur.execute(column_sql)
+        except sqlite3.OperationalError:
+            pass  # column's already there
 
     # DeliveryRating stays NULL until the customer rates a completed delivery
     cur.execute("""
@@ -146,6 +160,19 @@ def init_db():
             Message TEXT NOT NULL,
             IsRead BOOLEAN DEFAULT 0,
             CreatedAt TEXT
+        )
+    """)
+
+    # named UserCustomerID (not just "CustomerID") to match every other FK
+    # pointing at Customer in this schema
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS Cart (
+            CartID INTEGER PRIMARY KEY,
+            UserCustomerID INTEGER,
+            ItemID INTEGER,
+            Quantity INTEGER NOT NULL,
+            FOREIGN KEY (UserCustomerID) REFERENCES Customer (UserCustomerID),
+            FOREIGN KEY (ItemID) REFERENCES Items (ItemID)
         )
     """)
 

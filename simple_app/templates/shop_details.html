@@ -16,16 +16,33 @@
   </div>
 </div>
 
-<h2 class="text-lg font-semibold text-forest-dark mb-4">Available Items</h2>
+<div class="flex items-center justify-between gap-4 mb-4">
+  <h2 class="text-lg font-semibold text-forest-dark">Available Items</h2>
+  <a href="{{ url_for('view_cart') }}"
+     class="relative inline-flex items-center gap-2 rounded-full bg-forest text-white text-sm font-semibold px-4 py-2.5 shadow-md hover:bg-forest-light hover:shadow-lg hover:ring-2 hover:ring-forest-light/40 hover:-translate-y-0.5 transition-all duration-300">
+    🛒 View Cart
+    {% if cart_count %}
+      <span class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-gold text-forest-dark text-[11px] font-bold flex items-center justify-center shadow-md">{{ cart_count }}</span>
+    {% endif %}
+  </a>
+</div>
+
+<!-- product search, scoped to this shop -->
+<form method="GET" action="{{ url_for('shop_details', shop_id=shop.ShopID) }}" class="mb-6">
+  <div class="relative max-w-md">
+    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+    <input type="text" name="search" value="{{ search_query }}" placeholder="Search items in this shop..."
+           class="w-full rounded-full border border-gray-200 bg-white/80 backdrop-blur-md pl-11 pr-4 py-3 text-sm shadow-md transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30" />
+  </div>
+</form>
 
 {% if not items %}
   <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
-    This shop hasn't listed any items yet.
+    {% if search_query %}No items match "{{ search_query }}".{% else %}This shop hasn't listed any items yet.{% endif %}
   </div>
 {% else %}
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
     {% for item in items %}
-      {% set sold_out = item.OrderID is not none or item.Stock <= 0 %}
       <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 rounded-3xl p-5 space-y-4">
         <div class="flex items-start justify-between gap-2">
           <p class="font-semibold text-forest-dark">{{ item.Name }}</p>
@@ -37,30 +54,31 @@
             {% if item.FruitsAndVegetables %}Fruits & Vegetables
             {% elif item.Grains %}Grains
             {% elif item.Meat %}Meat
+            {% elif item.CategoryName %}{{ item.CategoryName }}
             {% else %}Custom{% endif %}
           </span>
         </div>
 
         <div class="flex items-baseline justify-between">
           <p class="text-xl font-semibold text-forest">${{ "%.2f"|format(item.Price) }}</p>
-          <p class="text-sm text-gray-500">{{ item.Stock }} in stock</p>
+          <p class="text-sm text-gray-500">{{ item.Stock }} {{ item.Unit }}</p>
         </div>
 
-        {% if sold_out %}
-          <div class="rounded-xl bg-gray-50 text-gray-400 text-center text-sm font-medium py-2.5">
-            Sold Out
-          </div>
-        {% else %}
-          <form method="POST" action="{{ url_for('place_order') }}" class="flex items-center gap-2">
+        {% if item.Stock > 0 %}
+          <form method="POST" action="{{ url_for('add_to_cart') }}" class="flex items-center gap-2">
             <input type="hidden" name="item_id" value="{{ item.ItemID }}" />
             <input type="hidden" name="shop_id" value="{{ shop.ShopID }}" />
             <input type="number" name="quantity" value="1" min="1" max="{{ item.Stock }}" required
                    class="w-20 rounded-xl border border-gray-200 px-3 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30" />
             <button type="submit"
                     class="flex-1 rounded-xl bg-forest text-white font-medium py-2.5 shadow-md hover:bg-forest-light hover:shadow-lg hover:ring-2 hover:ring-forest-light/40 hover:-translate-y-0.5 transition-all duration-300">
-              Order Now
+              Add to Cart
             </button>
           </form>
+        {% else %}
+          <div class="rounded-xl bg-gray-50 text-gray-400 text-center text-sm font-medium py-2.5">
+            Sold Out
+          </div>
         {% endif %}
 
         <!-- pre-order: propose your own price/qty, farmer can accept or reject -->

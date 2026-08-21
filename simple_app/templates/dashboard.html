@@ -83,9 +83,15 @@
   {% if notifications %}
     <div class="mb-6 space-y-2">
       {% for note in notifications %}
-        <div class="flex items-center gap-3 rounded-2xl bg-gold/10 backdrop-blur-md border border-gold/30 px-4 py-3 text-sm text-forest-dark shadow-sm">
+        <div class="relative flex items-center gap-3 rounded-2xl bg-gold/10 backdrop-blur-md border border-gold/30 px-4 py-3 pr-10 text-sm text-forest-dark shadow-sm">
           <span class="text-lg">🔔</span>
-          {{ note.Message }}
+          <span>{{ note.Message }}</span>
+          <form method="POST" action="{{ url_for('dismiss_notification', notif_id=note.NotificationID) }}" class="absolute top-2 right-2">
+            <button type="submit" title="Dismiss"
+                    class="w-5 h-5 rounded-full flex items-center justify-center text-forest-dark/40 hover:text-rose-600 hover:bg-rose-50 transition-colors text-xs">
+              ✕
+            </button>
+          </form>
         </div>
       {% endfor %}
     </div>
@@ -145,12 +151,19 @@
 
           <div>
             <label class="block text-sm font-medium text-forest-dark mb-1" for="category">Category</label>
-            <select id="category" name="category" required
+            <select id="category" name="category" required onchange="toggleCustomCategory()"
                     class="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30">
               <option value="Fruits & Vegetables">Fruits & Vegetables</option>
               <option value="Grains">Grains</option>
               <option value="Meat">Meat</option>
+              <option value="Custom">Custom...</option>
             </select>
+          </div>
+
+          <div id="custom_category_wrap" class="hidden">
+            <label class="block text-sm font-medium text-forest-dark mb-1" for="custom_category">Custom Category Name</label>
+            <input id="custom_category" name="custom_category" type="text" placeholder="e.g. Exotic Spices"
+                   class="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30" />
           </div>
 
           <div class="grid grid-cols-2 gap-3">
@@ -166,11 +179,37 @@
             </div>
           </div>
 
+          <div>
+            <label class="block text-sm font-medium text-forest-dark mb-1" for="unit">Unit</label>
+            <select id="unit" name="unit" required
+                    class="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30">
+              <option value="pieces">Pieces</option>
+              <option value="kg">Kilograms (kg)</option>
+              <option value="g">Grams (g)</option>
+              <option value="litre">Litres</option>
+              <option value="dozen">Dozen</option>
+            </select>
+          </div>
+
           <button type="submit"
                   class="w-full rounded-xl bg-gold text-forest-dark font-semibold py-2.5 shadow-md hover:bg-gold-dark hover:text-white hover:shadow-lg hover:ring-2 hover:ring-gold/40 hover:-translate-y-0.5 transition-all duration-300">
             Add Item
           </button>
         </form>
+
+        <script>
+          function toggleCustomCategory() {
+            var isCustom = document.getElementById("category").value === "Custom";
+            var wrap = document.getElementById("custom_category_wrap");
+            var input = document.getElementById("custom_category");
+            wrap.classList.toggle("hidden", !isCustom);
+            if (isCustom) {
+              input.setAttribute("required", "required");
+            } else {
+              input.removeAttribute("required");
+            }
+          }
+        </script>
       </div>
 
       <!-- items grid -->
@@ -195,12 +234,13 @@
                     {% if item.FruitsAndVegetables %}Fruits & Vegetables
                     {% elif item.Grains %}Grains
                     {% elif item.Meat %}Meat
+                    {% elif item.CategoryName %}{{ item.CategoryName }}
                     {% else %}Custom{% endif %}
                   </span>
                 </div>
                 <div class="flex items-baseline justify-between">
                   <p class="text-xl font-semibold text-forest">${{ "%.2f"|format(item.Price) }}</p>
-                  <p class="text-sm text-gray-500">{{ item.Stock }} in stock</p>
+                  <p class="text-sm text-gray-500">{{ item.Stock }} {{ item.Unit }}</p>
                 </div>
               </div>
             {% endfor %}
@@ -248,6 +288,26 @@
                             Mark Ready
                           </button>
                         </form>
+                      {% elif order.Status == 'Cancel Requested' %}
+                        <div class="flex items-center gap-2">
+                          {{ macros.status_badge(order.Status) }}
+                          <form method="POST" action="{{ url_for('handle_cancel_request') }}">
+                            <input type="hidden" name="order_id" value="{{ order.OrderID }}" />
+                            <input type="hidden" name="action" value="Approve" />
+                            <button type="submit"
+                                    class="rounded-full bg-forest text-white text-xs font-medium px-3 py-1.5 hover:bg-forest-light hover:shadow-md hover:ring-2 hover:ring-forest-light/40 transition-all duration-300">
+                              Approve Cancel
+                            </button>
+                          </form>
+                          <form method="POST" action="{{ url_for('handle_cancel_request') }}">
+                            <input type="hidden" name="order_id" value="{{ order.OrderID }}" />
+                            <input type="hidden" name="action" value="Deny" />
+                            <button type="submit"
+                                    class="rounded-full bg-rose-50 text-rose-600 text-xs font-medium px-3 py-1.5 hover:bg-rose-100 hover:ring-2 hover:ring-rose-200 transition-all duration-300">
+                              Deny Cancel
+                            </button>
+                          </form>
+                        </div>
                       {% else %}
                         {{ macros.status_badge(order.Status) }}
                       {% endif %}
@@ -327,23 +387,47 @@
   {% endif %}
 
 {% elif session.role == 'Customer' %}
-  <h1 class="text-2xl font-semibold text-forest-dark mb-6">Shops</h1>
+  <div class="flex items-center justify-between gap-4 mb-6">
+    <h1 class="text-2xl font-semibold text-forest-dark">Shops</h1>
+    <a href="{{ url_for('view_cart') }}"
+       class="relative inline-flex items-center gap-2 rounded-full bg-forest text-white text-sm font-semibold px-4 py-2.5 shadow-md hover:bg-forest-light hover:shadow-lg hover:ring-2 hover:ring-forest-light/40 hover:-translate-y-0.5 transition-all duration-300">
+      🛒 View Cart
+      {% if cart_count %}
+        <span class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-gold text-forest-dark text-[11px] font-bold flex items-center justify-center shadow-md">{{ cart_count }}</span>
+      {% endif %}
+    </a>
+  </div>
 
   <!-- notifications -->
   {% if notifications %}
     <div class="mb-6 space-y-2">
       {% for note in notifications %}
-        <div class="flex items-center gap-3 rounded-2xl bg-gold/10 backdrop-blur-md border border-gold/30 px-4 py-3 text-sm text-forest-dark shadow-sm">
+        <div class="relative flex items-center gap-3 rounded-2xl bg-gold/10 backdrop-blur-md border border-gold/30 px-4 py-3 pr-10 text-sm text-forest-dark shadow-sm">
           <span class="text-lg">🔔</span>
-          {{ note.Message }}
+          <span>{{ note.Message }}</span>
+          <form method="POST" action="{{ url_for('dismiss_notification', notif_id=note.NotificationID) }}" class="absolute top-2 right-2">
+            <button type="submit" title="Dismiss"
+                    class="w-5 h-5 rounded-full flex items-center justify-center text-forest-dark/40 hover:text-rose-600 hover:bg-rose-50 transition-colors text-xs">
+              ✕
+            </button>
+          </form>
         </div>
       {% endfor %}
     </div>
   {% endif %}
 
+  <!-- shop search -->
+  <form method="GET" action="{{ url_for('dashboard') }}" class="mb-6">
+    <div class="relative max-w-md">
+      <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+      <input type="text" name="q" value="{{ search_query }}" placeholder="Search shops..."
+             class="w-full rounded-full border border-gray-200 bg-white/80 backdrop-blur-md pl-11 pr-4 py-3 text-sm shadow-md transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30" />
+    </div>
+  </form>
+
   {% if not shops %}
     <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
-      No shops registered yet.
+      {% if search_query %}No shops match "{{ search_query }}".{% else %}No shops registered yet.{% endif %}
     </div>
   {% else %}
     {% set gradients = ['from-forest to-forest-light', 'from-forest-dark to-forest', 'from-gold-dark to-gold', 'from-forest-light to-gold-dark'] %}
@@ -398,7 +482,28 @@
                   <td class="px-5 py-3 text-gray-600">{{ order.ShopName }}</td>
                   <td class="px-5 py-3 text-gray-500">{{ order.OrderDate[:16]|replace('T', ' ') }}</td>
                   <td class="px-5 py-3 text-right font-medium text-forest-dark">${{ "%.2f"|format(order.TotalAmount) }}</td>
-                  <td class="px-5 py-3">{{ macros.status_badge(order.Status) }}</td>
+                  <td class="px-5 py-3">
+                    <div class="flex items-center gap-2">
+                      {{ macros.status_badge(order.Status) }}
+                      {% if order.Status == 'Pending' %}
+                        <form method="POST" action="{{ url_for('cancel_order') }}">
+                          <input type="hidden" name="order_id" value="{{ order.OrderID }}" />
+                          <button type="submit"
+                                  class="rounded-full bg-rose-50 text-rose-600 text-xs font-medium px-3 py-1.5 hover:bg-rose-100 hover:ring-2 hover:ring-rose-200 transition-all duration-300">
+                            Cancel
+                          </button>
+                        </form>
+                      {% elif order.Status in ['Ready', 'In Transit'] %}
+                        <form method="POST" action="{{ url_for('request_cancel') }}">
+                          <input type="hidden" name="order_id" value="{{ order.OrderID }}" />
+                          <button type="submit"
+                                  class="rounded-full bg-amber-50 text-amber-700 text-xs font-medium px-3 py-1.5 hover:bg-amber-100 hover:ring-2 hover:ring-amber-200 transition-all duration-300">
+                            Request Cancel
+                          </button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  </td>
                   <td class="px-5 py-3">
                     {% if order.Status == 'Delivered' and order.ShopRating is none %}
                       <form method="POST" action="{{ url_for('submit_rating') }}" class="flex items-center gap-1.5">

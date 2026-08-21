@@ -75,11 +75,44 @@ def add_notification(conn, user_id, role, message):
     )
 
 
+def claim_item(conn, item, order_id, quantity):
+    # Items.OrderID can only ever point at one Order, so claiming a smaller
+    # quantity than what's on the shelf means splitting: the claimed row
+    # shrinks to exactly what was bought, and a fresh, still-unclaimed row
+    # picks up whatever's left over so the listing stays purchasable.
+    leftover = item["Stock"] - quantity
+    conn.execute(
+        "UPDATE Items SET OrderID = ?, Stock = ? WHERE ItemID = ?",
+        (order_id, quantity, item["ItemID"]),
+    )
+    if leftover > 0:
+        conn.execute(
+            """INSERT INTO Items (Name, Price, Stock, FruitsAndVegetables, Grains, Meat, Unit, CategoryName, ShopID, OrderID)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)""",
+            (item["Name"], item["Price"], leftover, item["FruitsAndVegetables"], item["Grains"], item["Meat"],
+             item["Unit"], item["CategoryName"], item["ShopID"]),
+        )
+
+
 def hash_password(password):
     # salted hash, stdlib only, no extra package needed
     salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 260_000)
     return salt.hex() + "$" + digest.hex()
+
+
+@app.context_processor
+def inject_cart_count():
+    # so the navbar cart badge shows up on every page, not just /dashboard
+    if session.get("role") != "Customer":
+        return {"cart_count": 0}
+    conn = get_db()
+    count = conn.execute(
+        "SELECT COALESCE(SUM(Quantity), 0) FROM Cart WHERE UserCustomerID = ?",
+        (session["user_id"],),
+    ).fetchone()[0]
+    conn.close()
+    return {"cart_count": count}
 
 
 def check_password(password, stored_hash):
@@ -216,12 +249,23 @@ def dashboard():
         context["preorder_count"] = conn.execute("SELECT COUNT(*) FROM PreOrderRequest").fetchone()[0]
 
     elif role == "Customer":
+        search_query = request.args.get("q", "").strip()
+
         # left join so shops with no farmer attached still show up
-        context["shops"] = conn.execute("""
-            SELECT Shop.ShopID, Shop.ShopName, Shop.Review, Farmer.Name AS FarmerName
-            FROM Shop
-            LEFT JOIN Farmer ON Farmer.ShopID = Shop.ShopID
-        """).fetchall()
+        if search_query:
+            context["shops"] = conn.execute("""
+                SELECT Shop.ShopID, Shop.ShopName, Shop.Review, Farmer.Name AS FarmerName
+                FROM Shop
+                LEFT JOIN Farmer ON Farmer.ShopID = Shop.ShopID
+                WHERE Shop.ShopName LIKE ?
+            """, (f"%{search_query}%",)).fetchall()
+        else:
+            context["shops"] = conn.execute("""
+                SELECT Shop.ShopID, Shop.ShopName, Shop.Review, Farmer.Name AS FarmerName
+                FROM Shop
+                LEFT JOIN Farmer ON Farmer.ShopID = Shop.ShopID
+            """).fetchall()
+        context["search_query"] = search_query
 
         # this customer's past orders, with what item/shop they bought from,
         # plus ratings so the template knows whether to show a rating form
@@ -371,22 +415,36 @@ def add_item():
         return redirect(url_for("dashboard"))
 
     category = request.form["category"]
-    column = CATEGORY_COLUMNS.get(category)
-    if not column:
-        conn.close()
-        flash("Please pick a valid category.", "error")
-        return redirect(url_for("dashboard"))
-
     name = request.form["name"]
     price = request.form["price"]
     stock = request.form["stock"]
+    unit = request.form.get("unit") or "pieces"
 
-    # column name comes from the CATEGORY_COLUMNS map above, never straight from
-    # the form, so this is safe even though it's not a normal ? placeholder
-    conn.execute(
-        f"INSERT INTO Items (Name, Price, Stock, {column}, ShopID) VALUES (?, ?, ?, 1, ?)",
-        (name, price, stock, farmer["ShopID"]),
-    )
+    if category == "Custom":
+        # no boolean column for this - the free-text name goes in CategoryName instead
+        custom_category = request.form.get("custom_category", "").strip()
+        if not custom_category:
+            conn.close()
+            flash("Please name your custom category.", "error")
+            return redirect(url_for("dashboard"))
+        conn.execute(
+            "INSERT INTO Items (Name, Price, Stock, Unit, CategoryName, ShopID) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, price, stock, unit, custom_category, farmer["ShopID"]),
+        )
+    else:
+        column = CATEGORY_COLUMNS.get(category)
+        if not column:
+            conn.close()
+            flash("Please pick a valid category.", "error")
+            return redirect(url_for("dashboard"))
+
+        # column name comes from the CATEGORY_COLUMNS map above, never straight
+        # from the form, so this is safe even though it's not a normal ? placeholder
+        conn.execute(
+            f"INSERT INTO Items (Name, Price, Stock, {column}, Unit, ShopID) VALUES (?, ?, ?, 1, ?, ?)",
+            (name, price, stock, unit, farmer["ShopID"]),
+        )
+
     conn.commit()
     conn.close()
 
@@ -406,16 +464,32 @@ def shop_details(shop_id):
         flash("Shop not found.", "error")
         return redirect(url_for("dashboard"))
 
-    items = conn.execute("SELECT * FROM Items WHERE ShopID = ?", (shop_id,)).fetchall()
+    # OrderID IS NULL - once a listing is claimed by an order it's that
+    # order's history now, not a product on the shelf. If a partial quantity
+    # got claimed, claim_item() already split the leftover into a fresh row,
+    # so customers only ever see listings that are actually still for sale.
+    search_query = request.args.get("search", "").strip()
+    if search_query:
+        rows = conn.execute(
+            "SELECT * FROM Items WHERE ShopID = ? AND OrderID IS NULL AND Name LIKE ?",
+            (shop_id, f"%{search_query}%"),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM Items WHERE ShopID = ? AND OrderID IS NULL", (shop_id,)).fetchall()
     conn.close()
 
-    return render_template("shop_details.html", shop=shop, items=items)
+    # explicit int cast, belt-and-suspenders against Stock ever coming through as text
+    items = [dict(row) for row in rows]
+    for item in items:
+        item["Stock"] = int(item["Stock"])
+
+    return render_template("shop_details.html", shop=shop, items=items, search_query=search_query)
 
 
-@app.route("/place_order", methods=["POST"])
-def place_order():
+@app.route("/add_to_cart", methods=["POST"])
+def add_to_cart():
     if session.get("role") != "Customer":
-        flash("Only customers can place orders.", "error")
+        flash("Only customers can add items to a cart.", "error")
         return redirect(url_for("dashboard"))
 
     item_id = request.form["item_id"]
@@ -425,9 +499,7 @@ def place_order():
     conn = get_db()
     item = conn.execute("SELECT * FROM Items WHERE ItemID = ?", (item_id,)).fetchone()
 
-    # Items.OrderID is a one-to-one link (no separate line-item table in this
-    # schema), so once an item is linked to an order it's off the market -
-    # think of it as one listing sold in a single batch, not a shared pool.
+    # same rule as everywhere else: once Items.OrderID is set, it's off the market
     if not item or item["OrderID"] is not None:
         conn.close()
         flash("That item is no longer available.", "error")
@@ -438,30 +510,124 @@ def place_order():
         flash("Not enough stock for that quantity.", "error")
         return redirect(url_for("shop_details", shop_id=shop_id))
 
-    total_price = item["Price"] * quantity
-
-    cur = conn.execute(
-        """INSERT INTO "Order" (TotalAmount, PaymentStatus, OrderDate, Status, UserCustomerID)
-           VALUES (?, 'Unpaid', ?, 'Pending', ?)""",
-        (total_price, datetime.now().isoformat(), session["user_id"]),
-    )
-    new_order_id = cur.lastrowid
-
-    # link the item to this order and take it out of stock
-    conn.execute(
-        "UPDATE Items SET OrderID = ?, Stock = Stock - ? WHERE ItemID = ?",
-        (new_order_id, quantity, item_id),
-    )
-
-    # let the farmer(s) running this shop know a new order came in
-    farmers = conn.execute("SELECT UserFarmerID FROM Farmer WHERE ShopID = ?", (item["ShopID"],)).fetchall()
-    for f in farmers:
-        add_notification(conn, f["UserFarmerID"], "Farmer", f"New order for {item['Name']} (Qty {quantity}).")
+    # already sitting in the cart? bump the quantity instead of a duplicate row
+    existing = conn.execute(
+        "SELECT * FROM Cart WHERE UserCustomerID = ? AND ItemID = ?",
+        (session["user_id"], item_id),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE Cart SET Quantity = ? WHERE CartID = ?",
+            (existing["Quantity"] + quantity, existing["CartID"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO Cart (UserCustomerID, ItemID, Quantity) VALUES (?, ?, ?)",
+            (session["user_id"], item_id, quantity),
+        )
 
     conn.commit()
     conn.close()
 
-    flash("Order placed!", "success")
+    flash("Added to cart!", "success")
+    return redirect(url_for("shop_details", shop_id=shop_id))
+
+
+@app.route("/cart")
+def view_cart():
+    if session.get("role") != "Customer":
+        flash("Only customers have a cart.", "error")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db()
+    cart_items = conn.execute("""
+        SELECT Cart.CartID, Cart.Quantity, Items.ItemID, Items.Name, Items.Price, Items.Stock,
+               Shop.ShopName
+        FROM Cart
+        JOIN Items ON Items.ItemID = Cart.ItemID
+        JOIN Shop ON Shop.ShopID = Items.ShopID
+        WHERE Cart.UserCustomerID = ?
+    """, (session["user_id"],)).fetchall()
+    conn.close()
+
+    subtotal = sum(row["Price"] * row["Quantity"] for row in cart_items)
+    return render_template("cart.html", cart_items=cart_items, subtotal=subtotal)
+
+
+@app.route("/remove_from_cart", methods=["POST"])
+def remove_from_cart():
+    if session.get("role") != "Customer":
+        flash("Only customers have a cart.", "error")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM Cart WHERE CartID = ? AND UserCustomerID = ?",
+        (request.form["cart_id"], session["user_id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    flash("Removed from cart.", "success")
+    return redirect(url_for("view_cart"))
+
+
+@app.route("/checkout", methods=["POST"])
+def checkout():
+    if session.get("role") != "Customer":
+        flash("Only customers can check out.", "error")
+        return redirect(url_for("dashboard"))
+
+    coupon_code = request.form.get("coupon_code", "").strip()
+    payment_method = request.form["payment_method"]
+    discount = 0.1 if coupon_code == "DISCOUNT10" else 0
+    payment_status = "Paid" if payment_method in ("bKash", "Card") else "Pending"
+
+    conn = get_db()
+    cart_items = conn.execute("""
+        SELECT Cart.CartID, Cart.Quantity, Items.ItemID, Items.Name, Items.Price, Items.Stock,
+               Items.OrderID, Items.ShopID, Items.FruitsAndVegetables, Items.Grains, Items.Meat,
+               Items.Unit, Items.CategoryName
+        FROM Cart JOIN Items ON Items.ItemID = Cart.ItemID
+        WHERE Cart.UserCustomerID = ?
+    """, (session["user_id"],)).fetchall()
+
+    if not cart_items:
+        conn.close()
+        flash("Your cart is empty.", "error")
+        return redirect(url_for("view_cart"))
+
+    # Order has no ItemID column - same as every other order in this app,
+    # the item gets claimed through Items.OrderID, one Order per cart line
+    skipped = []
+    for cart_item in cart_items:
+        # someone else may have grabbed this item since it landed in the cart
+        if cart_item["OrderID"] is not None or cart_item["Quantity"] > cart_item["Stock"]:
+            skipped.append(cart_item["Name"])
+            continue
+
+        total_price = cart_item["Price"] * cart_item["Quantity"] * (1 - discount)
+
+        cur = conn.execute(
+            """INSERT INTO "Order" (TotalAmount, CouponCode, PaymentStatus, OrderDate, PaymentMethod, Status, UserCustomerID)
+               VALUES (?, ?, ?, ?, ?, 'Pending', ?)""",
+            (total_price, coupon_code or None, payment_status, datetime.now().isoformat(), payment_method, session["user_id"]),
+        )
+        new_order_id = cur.lastrowid
+
+        claim_item(conn, cart_item, new_order_id, cart_item["Quantity"])
+
+        farmers = conn.execute("SELECT UserFarmerID FROM Farmer WHERE ShopID = ?", (cart_item["ShopID"],)).fetchall()
+        for f in farmers:
+            add_notification(conn, f["UserFarmerID"], "Farmer", f"New order for {cart_item['Name']} (Qty {cart_item['Quantity']}).")
+
+    conn.execute("DELETE FROM Cart WHERE UserCustomerID = ?", (session["user_id"],))
+    conn.commit()
+    conn.close()
+
+    if skipped:
+        flash(f"Sorry, these items sold out before checkout: {', '.join(skipped)}.", "error")
+    flash("Order placed! Thanks for shopping with AgriConnect.", "success")
     return redirect(url_for("dashboard"))
 
 
@@ -560,6 +726,109 @@ def complete_delivery():
     conn.close()
 
     flash("Delivery marked complete!", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/cancel_order", methods=["POST"])
+def cancel_order():
+    if session.get("role") != "Customer":
+        flash("Only customers can cancel orders.", "error")
+        return redirect(url_for("dashboard"))
+
+    order_id = request.form["order_id"]
+    conn = get_db()
+
+    # only lets you cancel your own order, and only before the farmer's touched it
+    order = conn.execute(
+        'SELECT * FROM "Order" WHERE OrderID = ? AND UserCustomerID = ?',
+        (order_id, session["user_id"]),
+    ).fetchone()
+    if not order or order["Status"] != "Pending":
+        conn.close()
+        flash("This order can't be cancelled.", "error")
+        return redirect(url_for("dashboard"))
+
+    conn.execute('UPDATE "Order" SET Status = ? WHERE OrderID = ?', ("Cancelled", order_id))
+    conn.commit()
+    conn.close()
+
+    flash("Order cancelled.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/request_cancel", methods=["POST"])
+def request_cancel():
+    if session.get("role") != "Customer":
+        flash("Only customers can request a cancellation.", "error")
+        return redirect(url_for("dashboard"))
+
+    order_id = request.form["order_id"]
+    conn = get_db()
+
+    # "Accepted" maps to our In Transit status - once a delivery man has
+    # picked it up there's no separate "Accepted" state in this schema
+    order = conn.execute(
+        'SELECT * FROM "Order" WHERE OrderID = ? AND UserCustomerID = ?',
+        (order_id, session["user_id"]),
+    ).fetchone()
+    if not order or order["Status"] not in ("Ready", "In Transit"):
+        conn.close()
+        flash("This order can't be cancelled at this stage.", "error")
+        return redirect(url_for("dashboard"))
+
+    conn.execute('UPDATE "Order" SET Status = ? WHERE OrderID = ?', ("Cancel Requested", order_id))
+
+    item = conn.execute("SELECT ShopID FROM Items WHERE OrderID = ?", (order_id,)).fetchone()
+    if item:
+        farmers = conn.execute("SELECT UserFarmerID FROM Farmer WHERE ShopID = ?", (item["ShopID"],)).fetchall()
+        for f in farmers:
+            add_notification(conn, f["UserFarmerID"], "Farmer", f"Customer requested cancellation for order #{order_id}.")
+
+    conn.commit()
+    conn.close()
+
+    flash("Cancellation requested - waiting on the farmer.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/handle_cancel_request", methods=["POST"])
+def handle_cancel_request():
+    if session.get("role") != "Farmer":
+        flash("Only farmers can respond to cancellation requests.", "error")
+        return redirect(url_for("dashboard"))
+
+    order_id = request.form["order_id"]
+    action = request.form["action"]
+    conn = get_db()
+
+    # make sure this order actually belongs to this farmer's own shop
+    farmer = conn.execute("SELECT ShopID FROM Farmer WHERE UserFarmerID = ?", (session["user_id"],)).fetchone()
+    order = conn.execute("""
+        SELECT "Order".* FROM "Order"
+        JOIN Items ON Items.OrderID = "Order".OrderID
+        WHERE "Order".OrderID = ? AND Items.ShopID = ? AND "Order".Status = 'Cancel Requested'
+    """, (order_id, farmer["ShopID"] if farmer else None)).fetchone()
+
+    if not order:
+        conn.close()
+        flash("Cancellation request not found.", "error")
+        return redirect(url_for("dashboard"))
+
+    if action == "Approve":
+        conn.execute('UPDATE "Order" SET Status = ? WHERE OrderID = ?', ("Cancelled", order_id))
+        add_notification(conn, order["UserCustomerID"], "Customer", "Your cancellation request was approved.")
+        flash("Cancellation approved.", "success")
+    else:
+        # no history column for this - a Delivery row already tells us whether
+        # this order was picked up (In Transit) or still waiting (Ready)
+        delivery = conn.execute("SELECT Status FROM Delivery WHERE OrderID = ?", (order_id,)).fetchone()
+        restored_status = "In Transit" if delivery and delivery["Status"] == "In Transit" else "Ready"
+        conn.execute('UPDATE "Order" SET Status = ? WHERE OrderID = ?', (restored_status, order_id))
+        add_notification(conn, order["UserCustomerID"], "Customer", "Your cancellation request was denied.")
+        flash("Cancellation denied.", "success")
+
+    conn.commit()
+    conn.close()
     return redirect(url_for("dashboard"))
 
 
@@ -834,13 +1103,12 @@ def update_preorder():
     new_order_id = cur.lastrowid
 
     if preorder["ItemID"]:
-        # catalog item - claim it at the negotiated price/quantity
-        item = conn.execute("SELECT Name FROM Items WHERE ItemID = ?", (preorder["ItemID"],)).fetchone()
+        # catalog item - claim it at the negotiated price/quantity. claim_item()
+        # splits off any leftover stock into a fresh, still-purchasable row
+        item = conn.execute("SELECT * FROM Items WHERE ItemID = ?", (preorder["ItemID"],)).fetchone()
         item_name = item["Name"] if item else "your item"
-        conn.execute(
-            "UPDATE Items SET OrderID = ?, Stock = Stock - ? WHERE ItemID = ?",
-            (new_order_id, preorder["Quantity"], preorder["ItemID"]),
-        )
+        if item:
+            claim_item(conn, item, new_order_id, preorder["Quantity"])
     else:
         # custom item - it didn't exist in the catalog, so create it as a
         # one-off listing that's immediately fully claimed by this order
@@ -862,6 +1130,23 @@ def update_preorder():
     conn.close()
 
     flash("Pre-order accepted and sent into processing!", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/dismiss_notification/<int:notif_id>", methods=["POST"])
+def dismiss_notification(notif_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_db()
+    # scoped to this user/role too, so nobody can dismiss someone else's notification
+    conn.execute(
+        "UPDATE Notification SET IsRead = 1 WHERE NotificationID = ? AND UserID = ? AND Role = ?",
+        (notif_id, session["user_id"], session["role"]),
+    )
+    conn.commit()
+    conn.close()
+
     return redirect(url_for("dashboard"))
 
 

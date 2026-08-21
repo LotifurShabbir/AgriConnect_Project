@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}My Cart - AgriConnect{% endblock %}
+
+{% block content %}
+
+<a href="{{ url_for('dashboard') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-forest-dark/60 hover:text-forest transition-colors mb-6">
+  ← Back to Shops
+</a>
+
+<h1 class="text-2xl font-semibold text-forest-dark mb-6">My Cart</h1>
+
+{% if not cart_items %}
+  <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-10 text-center text-gray-400">
+    Your cart is empty. Go find something fresh.
+  </div>
+{% else %}
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- cart items -->
+    <div class="lg:col-span-2">
+      <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-forest-dark/5 text-xs uppercase tracking-wide text-forest-dark/60">
+              <tr>
+                <th class="px-5 py-3">Item</th>
+                <th class="px-5 py-3">Shop</th>
+                <th class="px-5 py-3">Price</th>
+                <th class="px-5 py-3">Qty</th>
+                <th class="px-5 py-3 text-right">Line Total</th>
+                <th class="px-5 py-3"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              {% for row in cart_items %}
+                <tr class="{{ 'bg-white/40' if loop.index % 2 == 0 else '' }} hover:bg-forest/5 transition-colors">
+                  <td class="px-5 py-3 font-medium text-forest-dark">{{ row.Name }}</td>
+                  <td class="px-5 py-3 text-gray-600">{{ row.ShopName }}</td>
+                  <td class="px-5 py-3 text-gray-600">${{ "%.2f"|format(row.Price) }}</td>
+                  <td class="px-5 py-3 text-gray-600">{{ row.Quantity }}</td>
+                  <td class="px-5 py-3 text-right font-medium text-forest-dark">${{ "%.2f"|format(row.Price * row.Quantity) }}</td>
+                  <td class="px-5 py-3 text-right">
+                    <form method="POST" action="{{ url_for('remove_from_cart') }}">
+                      <input type="hidden" name="cart_id" value="{{ row.CartID }}" />
+                      <button type="submit"
+                              class="rounded-full bg-rose-50 text-rose-600 text-xs font-medium px-3 py-1.5 hover:bg-rose-100 hover:ring-2 hover:ring-rose-200 transition-all duration-300">
+                        Remove
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- checkout panel -->
+    <div class="lg:col-span-1">
+      <div class="bg-white/80 backdrop-blur-md shadow-xl border border-white/50 rounded-3xl p-6 h-fit">
+        <h3 class="text-lg font-semibold text-forest-dark mb-4">Checkout</h3>
+
+        <div class="flex items-baseline justify-between mb-1">
+          <p class="text-sm text-gray-500">Subtotal</p>
+          <p class="text-lg font-medium text-gray-600" id="subtotal_display">${{ "%.2f"|format(subtotal) }}</p>
+        </div>
+        <div class="flex items-baseline justify-between mb-5 pb-5 border-b border-gray-100">
+          <p class="text-sm font-semibold text-forest-dark">Total</p>
+          <p class="text-2xl font-semibold text-forest" id="total_display">${{ "%.2f"|format(subtotal) }}</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('checkout') }}" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-forest-dark mb-1" for="coupon_code">Coupon Code</label>
+            <div class="flex gap-2">
+              <input id="coupon_code" name="coupon_code" type="text" placeholder="e.g. DISCOUNT10"
+                     class="flex-1 rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-gold-dark focus:outline-none focus:ring-2 focus:ring-gold/30" />
+              <button type="button" id="apply_coupon_btn"
+                      class="rounded-xl bg-gold/20 text-gold-dark text-sm font-semibold px-4 hover:bg-gold hover:text-white hover:shadow-md hover:ring-2 hover:ring-gold/40 transition-all duration-300">
+                Apply
+              </button>
+            </div>
+            <p id="coupon_message" class="text-xs mt-1 text-gray-400">Try "DISCOUNT10" for 10% off.</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-forest-dark mb-1" for="payment_method">Payment Method</label>
+            <select id="payment_method" name="payment_method" required
+                    class="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm transition-all hover:border-gray-300 focus:border-forest-light focus:outline-none focus:ring-2 focus:ring-forest-light/30">
+              <option value="bKash">bKash</option>
+              <option value="Card">Card</option>
+              <option value="COD">Cash on Delivery</option>
+            </select>
+          </div>
+
+          <button type="submit"
+                  class="w-full rounded-xl bg-forest text-white font-semibold py-3 shadow-md hover:bg-forest-light hover:shadow-lg hover:ring-2 hover:ring-forest-light/40 hover:-translate-y-0.5 transition-all duration-300">
+            Place Order
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- just a live preview - the real discount is still applied server-side in /checkout -->
+  <script>
+    (function () {
+      var subtotal = {{ subtotal }};
+      var applyBtn = document.getElementById("apply_coupon_btn");
+      var couponInput = document.getElementById("coupon_code");
+      var totalDisplay = document.getElementById("total_display");
+      var message = document.getElementById("coupon_message");
+
+      applyBtn.addEventListener("click", function () {
+        var code = couponInput.value.trim().toUpperCase();
+        if (code === "DISCOUNT10") {
+          var discounted = subtotal * 0.9;
+          totalDisplay.textContent = "$" + discounted.toFixed(2);
+          message.textContent = "10% discount applied!";
+          message.className = "text-xs mt-1 text-emerald-600";
+        } else {
+          totalDisplay.textContent = "$" + subtotal.toFixed(2);
+          message.textContent = "Invalid coupon code.";
+          message.className = "text-xs mt-1 text-rose-600";
+        }
+      });
+    })();
+  </script>
+{% endif %}
+
+{% endblock %}

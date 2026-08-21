@@ -6,14 +6,16 @@
     {%- elif s == 'ready' %} bg-sky-50 text-sky-700 ring-sky-200
     {%- elif s == 'in transit' %} bg-blue-50 text-blue-700 ring-blue-200
     {%- elif s in ['delivered', 'completed', 'accepted'] %} bg-emerald-50 text-emerald-700 ring-emerald-200
-    {%- elif s == 'rejected' %} bg-rose-50 text-rose-700 ring-rose-200
+    {%- elif s == 'cancel requested' %} bg-orange-50 text-orange-700 ring-orange-200
+    {%- elif s in ['rejected', 'cancelled'] %} bg-rose-50 text-rose-700 ring-rose-200
     {%- else %} bg-gray-100 text-gray-500 ring-gray-200{% endif %}">
     <span class="w-1.5 h-1.5 rounded-full
       {%- if s == 'pending' %} bg-amber-500
       {%- elif s == 'ready' %} bg-sky-500
       {%- elif s == 'in transit' %} bg-blue-500
       {%- elif s in ['delivered', 'completed', 'accepted'] %} bg-emerald-500
-      {%- elif s == 'rejected' %} bg-rose-500
+      {%- elif s == 'cancel requested' %} bg-orange-500
+      {%- elif s in ['rejected', 'cancelled'] %} bg-rose-500
       {%- else %} bg-gray-400{% endif %}"></span>
     {{ status or "—" }}
   </span>
